@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import os
 from Generacion_Variables import generate_simulation_data 
 from export_pdf import exportar_simulacion_pdf
-
+from bd.db_queries import insert_estado_tradicional, insert_estado_variable, insert_punto_equilibrio, get_available_reports, get_full_report_data
+import threading
 
 class ModernFinancialUI:
     def __init__(self, root):
@@ -216,6 +217,20 @@ class ModernFinancialUI:
             statement["Industria y Comercio"] = (ic_oyv, ic_oyv / ventas_mensuales)
             statement["Total Gastos Admon y Ventas"] = (total_gastos_oyv, total_gastos_oyv / ventas_mensuales)
             statement["Utilidad Operacional"] = (utilidad_operacional, utilidad_operacional / ventas_mensuales)
+
+
+            def insertar():
+                try:
+                    insert_estado_tradicional(
+                        ventas_mensuales, materia_prima, mano_obra, cif_total, total_costo_ventas,
+                        utilidad_bruta, salario_adm, salario_meseros, arriendo_oyv,
+                        depreciacion_oyv, ic_oyv, total_gastos_oyv, utilidad_operacional
+                    )
+                except Exception as e:
+                    print(f"Error al insertar Estado Tradicional: {e}")
+
+            threading.Thread(target=insertar).start()
+
             return statement
 
         except ZeroDivisionError:
@@ -300,6 +315,22 @@ class ModernFinancialUI:
             Rentabilidad_en_ventas = utilidad_operacional / ventas_totales if ventas_totales else 0
             
             # --- 5. Estructura de Salida ---
+
+
+            def insertar():
+                try:
+                    insert_estado_variable(
+                        ventas_totales, total_materia_prima, total_sp,
+                        comisiones_sobre_ventas, total_ind_y_com,
+                        total_costos_variables, margen_contribucion,
+                        mano_obra_fija, SalarioFijoAdmin, SalarioFijoMeseros,
+                        arriendo, depreciacion, total_costos_fijos,
+                        utilidad_operacional, Rentabilidad_en_ventas
+                    )
+                except Exception as e:
+                    print(f"Error al insertar Estado Variable: {e}")
+                
+            threading.Thread(target=insertar).start()
             
             results = {
                 "Ventas": (ventas_totales, 1.0),
@@ -350,13 +381,115 @@ class ModernFinancialUI:
                 "Ventas para Utilidad Objetivo (Unidades)": (Ventas_Mensuales_unidades, Ventas_Mensuales_unidades / almuerzos_mensuales if almuerzos_mensuales else 0),
                 "Ventas para Utilidad Objetivo (Valor)": (Ventas_Mensuales_valor, Ventas_Mensuales_valor / ventas_totales if ventas_totales else 0),
             })
+
+            def insertar_pe():
+                try:
+                    insert_punto_equilibrio(
+                        Punto_Equilibrio_Mes, Punto_Equilibrio_Dia, Punto_Equilibrio_Unidades,
+                        margen_seguridad, margen_seguridad_valor,
+                        Ventas_Mensuales_unidades, Ventas_Mensuales_valor
+                    )
+                except Exception as e:
+                    print(f"Error al insertar Punto de Equilibrio: {e}")
+
+            threading.Thread(target=insertar_pe).start()
             
             return results
             
         except tk.TclError as e:
             print(f"Error en cálculo de costo variable: {e}")
             return None
+    
+    def _execute_comparison_logic(self):
+        """
+        Obtiene los ReporteIDs seleccionados, usa datos estáticos, y genera la vista 
+        de comparación con pestañas, ajustando el tamaño del contenedor.
+        """
+        
+        # 1. Limpiar el área de resultados anterior
+        for widget in self.comparison_results_frame.winfo_children():
+            widget.destroy()
 
+        # 📝 DATOS ESTÁTICOS DE EJEMPLO (Simulando la estructura de la base de datos)
+        STATIC_DATA_REPORT_A = {
+            "tradicional": {
+                "Ventas": 1500000, "MateriaPrima": 300000, "ManoDeObra": 100000, "CIF": 50000,
+                "TotalCostoVentas": 450000, "UtilidadBruta": 1050000, "SalarioAdministracion": 80000,
+                "TotalGastosAdmonVentas": 120000, "UtilidadOperacional": 930000,
+            },
+            "variable": {
+                "Ventas": 1500000, "TotalCostosVariables": 500000, "MargenContribucion": 1000000,
+                "TotalCostosFijos": 250000, "UtilidadOperacional": 750000, "RentabilidadVentas": 0.50,
+            },
+            "punto_equilibrio": {
+                "PuntoEquilibrioValor": 500000, "PuntoEquilibrioMesUnidades": 1000, "PuntoEquilibrioDiaUnidades": 33.33,
+                "MargenSeguridadPorc": 0.66, "VentasUtilidadObjetivoValor": 1200000,
+            },
+        }
+
+        STATIC_DATA_REPORT_B = {
+            "tradicional": {
+                "Ventas": 1800000, "MateriaPrima": 350000, "ManoDeObra": 120000, "CIF": 60000,
+                "TotalCostoVentas": 530000, "UtilidadBruta": 1270000, "SalarioAdministracion": 80000,
+                "TotalGastosAdmonVentas": 130000, "UtilidadOperacional": 1140000,
+            },
+            "variable": {
+                "Ventas": 1800000, "TotalCostosVariables": 600000, "MargenContribucion": 1200000,
+                "TotalCostosFijos": 250000, "UtilidadOperacional": 950000, "RentabilidadVentas": 0.527,
+            },
+            "punto_equilibrio": {
+                "PuntoEquilibrioValor": 500000, "PuntoEquilibrioMesUnidades": 1000, "PuntoEquilibrioDiaUnidades": 33.33,
+                "MargenSeguridadPorc": 0.72, "VentasUtilidadObjetivoValor": 1400000,
+            },
+        }
+
+        # 2. Extracción y Validación de ReporteIDs
+        try:
+            report1_id = int(self.report1_var.get().split(' ')[1])
+            report2_id = int(self.report2_var.get().split(' ')[1])
+        except Exception as e:
+            messagebox.showerror("Error de Selección", f"Fallo al leer el ID del reporte. Error: {e}")
+            return
+
+        if report1_id == report2_id:
+            tk.Label(self.comparison_results_frame, 
+                    text="⚠️ Por favor, selecciona dos reportes diferentes para comparar.",
+                    font=("Segoe UI", 11), fg="#f39c12").pack(pady=10)
+            return
+
+        # Asignación de datos estáticos
+        data1 = STATIC_DATA_REPORT_A
+        data2 = STATIC_DATA_REPORT_B
+
+        # 3. Configurar la vista con Pestañas (Notebook)
+        
+        tk.Label(self.comparison_results_frame, text="Indicadores Clave", 
+                font=("Segoe UI", 14, "bold"), bg="#ecf0f1").pack(pady=(10, 5))
+
+        notebook = ttk.Notebook(self.comparison_results_frame)
+        # Importante: No usar fill/expand para que se ajuste al contenido.
+        notebook.pack(padx=10, pady=10) 
+
+        # Crear frames para cada estado
+        tradicional_comp_frame = tk.Frame(notebook, bg="white")
+        variable_comp_frame = tk.Frame(notebook, bg="white")
+        pe_comp_frame = tk.Frame(notebook, bg="white")
+        
+        # Empaquetamos los frames (necesario si el notebook usa grid o pack con fill)
+        tradicional_comp_frame.pack(fill="both")
+        variable_comp_frame.pack(fill="both")
+        pe_comp_frame.pack(fill="both")
+
+        # Añadir pestañas
+        notebook.add(tradicional_comp_frame, text="Costo Tradicional ⚖️")
+        notebook.add(variable_comp_frame, text="Costo Variable ⚖️")
+        notebook.add(pe_comp_frame, text="Punto de Equilibrio ⚖️")
+
+        # 4. Dibujar las tablas
+        self._draw_comparison_table(tradicional_comp_frame, data1, data2, report1_id, report2_id, "tradicional")
+        self._draw_comparison_table(variable_comp_frame, data1, data2, report1_id, report2_id, "variable")
+        self._draw_comparison_table(pe_comp_frame, data1, data2, report1_id, report2_id, "punto_equilibrio")
+    
     def create_sidebar(self):
         self.sidebar_frame = tk.Frame(self.root, bg=self.sidebar_bg, width=self.sidebar_width)
         self.sidebar_frame.place(x=0, y=0, relheight=1, width=self.sidebar_width) # Usar width y relheight
@@ -367,6 +500,7 @@ class ModernFinancialUI:
         buttons = [
             ("Dashboard", self.show_dashboard),
             ("Simulación", self.show_simulation_view),
+            ("Comparar Estados", self.show_comparison_view),
         ]
 
         y = 110
@@ -748,6 +882,68 @@ class ModernFinancialUI:
             cursor="hand2"
         ).pack(side="right", padx=10)
 
+    def show_comparison_view(self):
+        """
+        Limpia el área principal y muestra la interfaz para seleccionar dos reportes
+        de estados financieros guardados para su comparación.
+        """
+        # 1. Limpiar la vista y configurar el título
+        self.clear_main()
+        
+        tk.Label(self.main_frame, text="⚖️ Comparar Estados Financieros", 
+                font=("Segoe UI", 24, "bold"), bg="#ecf0f1", fg="#2c3e50").pack(pady=(20, 8))
+
+        # 2. Obtener y Validar Reportes
+        reports = get_available_reports()
+        
+        if not reports or len(reports) < 2:
+            tk.Label(self.main_frame, 
+                    text="Se necesitan al menos dos simulaciones guardadas para comparar.",
+                    font=("Segoe UI", 14), fg="#e74c3c").pack(pady=40)
+            tk.Label(self.main_frame, 
+                    text=f"Reportes encontrados: {len(reports)}",
+                    font=("Segoe UI", 10)).pack()
+            return
+
+        # Formatear la lista para mostrarla en el menú (ID - Fecha)
+        # r[0] es ReporteID, r[1] es FechaGeneracion
+        report_options = [f"ID {r[0]} - {r[1].strftime('%Y-%m-%d %H:%M')}" for r in reports]
+        
+        # 3. Controles de Selección
+        selection_frame = tk.Frame(self.main_frame, bg="#ecf0f1", padx=15, pady=15)
+        selection_frame.pack(pady=20)
+        
+        self.report1_var = tk.StringVar(self.main_frame)
+        self.report2_var = tk.StringVar(self.main_frame)
+        
+        # Establecer valores iniciales
+        self.report1_var.set(report_options[0])
+        if len(report_options) > 1:
+            self.report2_var.set(report_options[1])
+        else:
+            # En caso de solo dos reportes, igual se seleccionan los dos para inicializar
+            self.report2_var.set(report_options[0]) 
+
+        # Selector 1
+        tk.Label(selection_frame, text="Reporte Base (1):", font=("Segoe UI", 11), bg="#ecf0f1").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        ttk.Combobox(selection_frame, textvariable=self.report1_var, values=report_options, state="readonly", width=30).grid(row=0, column=1, padx=10, pady=5)
+
+        # Selector 2
+        tk.Label(selection_frame, text="Reporte a Comparar (2):", font=("Segoe UI", 11), bg="#ecf0f1").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ttk.Combobox(selection_frame, textvariable=self.report2_var, values=report_options, state="readonly", width=30).grid(row=1, column=1, padx=10, pady=5)
+
+        # Botón para ejecutar la comparación
+        tk.Button(
+            self.main_frame, 
+            text="Generar Comparación", 
+            command=self._execute_comparison_logic, # Llama a la lógica de extracción
+            bg="#27ae60", fg="white", font=("Segoe UI", 12, "bold"), relief="raised", padx=10, pady=5
+        ).pack(pady=15)
+
+        # Frame donde se mostrará el resultado
+        self.comparison_results_frame = tk.Frame(self.main_frame, bg="#ecf0f1")
+        self.comparison_results_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
     def _show_traditional_statement_in_frame(self, target_frame):
         # Lógica de la tabla mantenida
 
@@ -820,9 +1016,12 @@ class ModernFinancialUI:
         tk.Label(target_frame, text="📈 Estado de Resultados por Costo Variable",
                 font=("Segoe UI", 24, "bold"), bg="#ecf0f1", fg="#2c3e50").pack(pady=(20, 8))
 
-        statement_data = self._calculate_variable_statement()
+        statement_data = getattr(self, 'variable_statement_data', None) 
         if not statement_data:
-            return 
+            # Si no se almacenó, intenta calcular por si se llamó fuera del flujo normal
+            statement_data = self._calculate_variable_statement()
+            if not statement_data:
+                return
 
         table_frame = tk.LabelFrame(
             target_frame,
@@ -919,10 +1118,13 @@ class ModernFinancialUI:
     def _show_break_even_point_in_frame(self, target_frame):
         """Muestra el cálculo y la gráfica del Punto de Equilibrio usando los datos de _calculate_variable_statement()."""
 
-        pe_data = self._calculate_variable_statement()
+        pe_data = getattr(self, 'variable_statement_data', None) 
         if not pe_data:
-            return
-        
+            # Si no se almacenó, intenta calcular por si se llamó fuera del flujo normal
+            pe_data = self._calculate_variable_statement()
+            if not pe_data:
+                return
+            
         # ====== Función dibuja filas ======
         def draw_row(parent, name, value, percentage=None, bg_color="white", is_bold=False, currency=True):
             row = tk.Frame(parent, bg=bg_color)
@@ -1069,6 +1271,113 @@ class ModernFinancialUI:
         canvas.get_tk_widget().pack(fill="both", expand=True)
         canvas.draw()
 
+    def _draw_comparison_table(self, parent_frame, data1, data2, id1, id2, table_key):
+        """
+        Dibuja una tabla comparativa en un frame, extrayendo datos de un estado específico.
+        :param table_key: Clave del diccionario de datos (ej: 'tradicional', 'variable', 'punto_equilibrio').
+        """
+        # Usar un Frame interior para mantener el Treeview centrado si es necesario
+        tree_container = tk.Frame(parent_frame, bg="white")
+        # Importante: No usar fill/expand para que el Treeview dentro controle el tamaño
+        tree_container.pack(padx=10, pady=10) 
+
+        # 1. Configuración de la Tabla (Treeview)
+        tree = ttk.Treeview(tree_container, columns=("R1", "R2", "DIF"), show="headings")
+        
+        tree.heading("R1", text=f"Base (ID {id1})")
+        tree.heading("R2", text=f"Comparar (ID {id2})")
+        tree.heading("DIF", text="Diferencia (R2 - R1)")
+        
+        tree.column("#0", minwidth=250, width=300, anchor="w")
+        tree.column("R1", anchor="e", width=180)
+        tree.column("R2", anchor="e", width=180)
+        tree.column("DIF", anchor="e", width=150)
+
+        # 2. Definición de Conceptos
+        conceptos_maestro = {
+            "tradicional": [
+                ("Ventas Totales", "Ventas", "currency"), ("Materia Prima", "MateriaPrima", "currency"),
+                ("Mano de Obra", "ManoDeObra", "currency"), ("CIF (Costo Indirecto)", "CIF", "currency"),
+                ("Total Costo Ventas", "TotalCostoVentas", "currency"), ("Utilidad Bruta", "UtilidadBruta", "currency"),
+                ("Salario Administración", "SalarioAdministracion", "currency"), 
+                ("Total Gastos ADM/Vtas", "TotalGastosAdmonVentas", "currency"),
+                ("Utilidad Operacional", "UtilidadOperacional", "currency"),
+            ],
+            "variable": [
+                ("Ventas Totales", "Ventas", "currency"), ("Costo Var. Materia Prima", "CostoVariableMateriaPrima", "currency"),
+                ("Total Costos Variables", "TotalCostosVariables", "currency"), ("Margen de Contribución", "MargenContribucion", "currency"),
+                ("Costo Fijo Mano Obra", "CostoFijoManoObra", "currency"), ("Sueldo Fijo Administración", "SueldoFijoAdministracion", "currency"),
+                ("Total Costos Fijos", "TotalCostosFijos", "currency"), ("Utilidad Operacional", "UtilidadOperacional", "currency"),
+                ("Rentabilidad sobre Ventas", "RentabilidadVentas", "percent"),
+            ],
+            "punto_equilibrio": [
+                ("PE en Valor ($)", "PuntoEquilibrioValor", "currency"), ("PE en Unidades (Mes)", "PuntoEquilibrioMesUnidades", "number"),
+                ("PE en Unidades (Día)", "PuntoEquilibrioDiaUnidades", "number"), ("Margen de Seguridad (%)", "MargenSeguridadPorc", "percent"),
+                ("Ventas Objetivo (Valor)", "VentasUtilidadObjetivoValor", "currency"),
+            ],
+        }
+
+        conceptos_a_dibujar = conceptos_maestro.get(table_key, [])
+        
+        # Función auxiliar para formato
+        def format_value(value, fmt):
+            if value is None: return "N/A"
+            try:
+                if fmt == "currency":
+                    return f"${value:,.2f}"
+                elif fmt == "percent":
+                    return f"{value*100:,.2f} %"
+                elif fmt == "number":
+                    return f"{value:,.0f}"
+            except (ValueError, TypeError):
+                return "N/A"
+            return str(value)
+
+        # 3. Llenado de la Tabla
+        for name, key, fmt in conceptos_a_dibujar:
+            val1 = data1[table_key].get(key) if data1[table_key] else None
+            val2 = data2[table_key].get(key) if data2[table_key] else None
+            
+            diff = "N/A"
+            is_numeric = isinstance(val1, (int, float)) and isinstance(val2, (int, float))
+            
+            if is_numeric:
+                diff = val2 - val1
+            
+            r1_fmt = format_value(val1, fmt)
+            r2_fmt = format_value(val2, fmt)
+            
+            diff_fmt = "N/A"
+            
+            if is_numeric:
+                diff = float(diff) # Aseguramos que 'diff' es flotante
+                
+                if fmt == "currency":
+                    # Formato corregido: + para el signo, , para miles, .2f para decimales
+                    diff_fmt = f"${diff:+,.2f}" 
+                elif fmt == "percent":
+                    diff_fmt = f"{diff*100:+,.2f} %"
+                else: # 'number'
+                    diff_fmt = f"{diff:+,.0f}"
+                    
+            # Resaltado
+            bg_color = 'white'
+            if is_numeric and abs(diff) > 0.001 and val1 is not None:
+                bg_color = '#d4e6f1'
+                
+            tree.insert("", "end", text=name, values=(r1_fmt, r2_fmt, diff_fmt), tags=(bg_color,))
+            tree.tag_configure(bg_color, background=bg_color)
+            
+        # Añadir barra de desplazamiento
+        vsb = ttk.Scrollbar(tree_container, orient="vertical", command=tree.yview)
+        
+        # 🚨 Empaquetado corregido: Treeview y Scrollbar
+        vsb.pack(side='right', fill='y')
+        # Importante: Quitamos expand=True del tree.pack()
+        tree.pack(side="left", fill="both") 
+        
+        tree.configure(yscrollcommand=vsb.set)
+
     def _extract_break_even_data(self, all_data):
         """
         Extrae solo los datos de Punto de Equilibrio del diccionario completo.
@@ -1204,6 +1513,9 @@ class ModernFinancialUI:
         de resultados y el punto de equilibrio en una interfaz de pestañas.
         """
         self.clear_main()
+
+        self.variable_statement_data = self._calculate_variable_statement() 
+        self.break_even_data = self._extract_break_even_data(self.variable_statement_data)
         # ---------------------------------------
         # 🔹 Título principal
         # ---------------------------------------
@@ -1249,10 +1561,15 @@ class ModernFinancialUI:
 
         # Poblar frames
         self._show_traditional_statement_in_frame(traditional_frame)
-        self._show_variable_statement_in_frame(variable_frame)
+        # Pasar los datos al método de visualización o dejar que acceda a self.
+        self._show_variable_statement_in_frame(variable_frame) 
         self._show_break_even_point_in_frame(break_even_frame)
 
-        notebook.select(1)
+        messagebox.showinfo("Información",
+            "Reportes Guardados en la bd correctamente.\n\n"
+        )
+
+        notebook.select(0)
 
 
 if __name__ == "__main__":
