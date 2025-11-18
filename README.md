@@ -13,6 +13,7 @@ Se utilizan las siguientes librerías externas:
 - `tkinter` (incluido en Python)
 - `matplotlib` → para graficar el Punto de Equilibrio
 - `reportlab` → para exportar reportes en PDF
+- `psycopg2-binary` → Para la conexion con la BD postgreSQL
 
 ---
 
@@ -24,7 +25,7 @@ git clone https://github.com/WilmerH1506/Proyecto_Teoria_Simulacion.git
 
 2. **Instalar dependencias**
 ```bash
-pip install matplotlib reportlab
+pip install matplotlib reportlab psycopg2-binary
 ```
 
 
